@@ -1,10 +1,14 @@
 # RTPV + AgroPV — firm-energy & grid-hosting explorer (India)
 
+### ▶ Live: **https://ashwask.github.io/rtpv-agropv-explorer/**
+
 A single-file, client-side prototype (MapLibre, no backend) exploring India's distributed-solar
 landscape through the lens that matters: **not nameplate GW, but firm energy and where the grid can
 actually absorb rooftop.**
 
-**Live:** see the GitHub Pages link in the repo's About section.
+> One screen tells the story: a country of **red** (no published grid hosting data) with a single
+> **green** state (Telangana). The data exists inside every DISCOM; the *visibility* doesn't. That gap
+> is the thesis.
 
 ## Tabs
 - **Map** — India by **hosting-data visibility** (the core question: where can the grid absorb rooftop, and where is that data even published?), plus rooftop installed, CUF, firm energy, storage-to-firm and firming cost.
