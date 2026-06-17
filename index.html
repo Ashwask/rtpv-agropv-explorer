@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RTPV + AgroPV — firm-energy map, strategy & roadmap</title>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<style>
+  :root{--bg:#0f1419;--panel:#171e26;--panel2:#1f2832;--line:#2a3744;--ink:#e8eef3;--muted:#8aa0b2;--accent:#46b3a6;--sun:#e8b94a;--stor:#a988e0;--cost:#e0683f}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  /* ---- tab bar ---- */
+  #tabs{position:fixed;top:0;left:0;right:0;height:46px;display:flex;align-items:center;gap:4px;padding:0 12px;background:#0c1116;border-bottom:1px solid var(--line);z-index:20}
+  #tabs .brand{font-size:12px;font-weight:800;letter-spacing:.3px;margin-right:10px;color:var(--accent)}
+  #tabs button{border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer}
+  #tabs button.on{background:var(--panel);color:var(--ink)}
+  .view{position:fixed;top:46px;left:0;right:0;bottom:0}
+  .view[hidden]{display:none}
+  .scroll{overflow:auto;height:100%;padding:22px 26px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+  /* ---- map view ---- */
+  #map{position:absolute;inset:0}
+  .ui{position:absolute;z-index:5}
+  #mhead{top:0;left:0;right:0;padding:10px 16px;background:linear-gradient(180deg,rgba(15,20,25,.96),rgba(15,20,25,0));pointer-events:none}
+  #mhead h1{margin:0;font-size:14px;font-weight:700}
+  #mhead p{margin:2px 0 0;font-size:11px;color:var(--muted)}
+  #panel{top:54px;left:12px;width:292px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .seg{display:flex;gap:4px;background:var(--panel2);border-radius:9px;padding:3px;margin-bottom:10px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;padding:7px 4px;border-radius:7px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#05140f}
+  label.fld{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:8px 0 4px}
+  select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+  #legend{margin-top:12px}
+  .bar{height:12px;border-radius:6px;margin:6px 0 3px}
+  .barlabels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+  .nodata{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:6px}
+  .swatch{width:12px;height:12px;border-radius:3px;background:#3a3a3a;display:inline-block}
+  #info{bottom:12px;left:12px;width:292px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:none;max-height:72vh;overflow:auto}
+  #info h2{margin:0 0 8px;font-size:14px}
+  .collapse{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:9px;padding:9px;margin-bottom:9px}
+  .collapse .big{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .collapse .lab{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .collapse .arrow{color:var(--sun);font-size:18px}.collapse .pct{font-size:10px;color:var(--sun);font-weight:700}
+  #info table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  #info td{padding:3px 0;border-bottom:1px solid var(--line)}
+  #info td.k{color:var(--muted)} #info td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .chartcap{font-size:10px;color:var(--muted);margin:7px 0 0;display:flex;gap:12px;flex-wrap:wrap}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}
+  .who{margin-top:9px;font-size:11px}.who .wh{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px}
+  .who ul{margin:0;padding-left:0;list-style:none}.who li{padding:2px 0;border-bottom:1px dotted var(--line)}
+  .who li b{color:var(--cost)}
+  .verdict{margin-top:9px;font-size:11px;line-height:1.4;background:var(--panel2);border-left:3px solid var(--accent);padding:7px 9px;border-radius:0 7px 7px 0}
+  #note{bottom:12px;right:12px;max-width:330px;background:rgba(23,30,38,.92);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:10px;line-height:1.45;color:var(--muted)}
+  #note b{color:var(--sun)}
+  #err{top:54px;left:50%;transform:translateX(-50%);background:#5a1d1d;color:#ffd9d9;border:1px solid #8a3030;padding:8px 14px;border-radius:8px;font-size:12px;display:none}
+  .maplibregl-popup-content{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;font-size:12px;padding:8px 10px}
+  .maplibregl-popup-tip{display:none}.tt b{display:block;margin-bottom:2px}.tt span{color:var(--muted)}
+  /* ---- strategy + shifts content ---- */
+  h2.sec{font-size:18px;margin:0 0 4px}
+  p.lead{color:var(--muted);font-size:13px;margin:0 0 18px;max-width:760px;line-height:1.5}
+  h3.sub{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin:24px 0 10px}
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0 4px}
+  table.t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:1px solid var(--line);padding:6px 10px 6px 0;font-weight:600}
+  table.t td{padding:8px 10px 8px 0;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.4}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+  .p-hi{background:#163a33;color:#7fce8e}.p-md{background:#3a3216;color:#e8b94a}.p-lo{background:#3a1f1f;color:#e08a8a}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .reframe{background:linear-gradient(90deg,#16504a22,#1f283200);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 10px 10px 0;font-size:13px;margin:0 0 16px;line-height:1.5}
+  /* roadmap */
+  .road{display:flex;flex-direction:column;gap:0}
+  .stage{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .stage .when{font-weight:800;font-size:13px}
+  .stage .when small{display:block;color:var(--muted);font-weight:500;font-size:10px;margin-top:2px}
+  .stage .shift{font-size:13px;line-height:1.5}
+  .stage .shift .fromto{display:block;margin-top:5px;font-size:12px}
+  .stage .shift .fromto .f{color:#e08a8a}.stage .shift .fromto .a{color:#7fce8e}
+  .stage .shift .mk{display:block;margin-top:6px;font-size:11.5px;color:var(--muted)}
+  .stage .shift .mk b{color:var(--sun)}
+  .stage .shift .hook{display:inline-block;margin-top:6px;font-size:10px;color:var(--accent);background:#16504a22;padding:2px 7px;border-radius:5px}
+  .dot0{color:#8aa0b2}.dot1{color:#7fce8e}.dot2{color:#e8b94a}.dot3{color:#e0683f}
+  .outcome{background:linear-gradient(90deg,#1f7a5e33,#17202600);border:1px solid #1f7a5e;border-radius:12px;padding:16px;margin-top:14px}
+  .outcome h4{margin:0 0 6px;font-size:14px;color:#7fce8e}
+  .outcome p{margin:0;font-size:13px;line-height:1.5}
+  .muted{color:var(--muted);font-size:11px}
+  /* ---- trackers (ground-level, measurable) ---- */
+  .stat{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:2px 7px;border-radius:20px;white-space:nowrap}
+  .st-active{background:#163a33;color:#7fce8e}.st-plan{background:#2a3744;color:#9fb3c4}
+  .st-block{background:#3a1f1f;color:#e8a0a0}.st-done{background:#16314d;color:#7fb0e0}
+  .init{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .init .ihdr{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .init .ihdr h4{margin:0;font-size:14px}
+  .init .meta{font-size:11px;color:var(--muted);margin:4px 0 11px}.init .meta b{color:var(--ink)}
+  .kpi{margin:9px 0}
+  .kpi .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:4px;gap:10px}
+  .kpi .lab .nm{font-weight:600}
+  .kpi .lab .vl{font-variant-numeric:tabular-nums;color:var(--muted);font-size:11px;white-space:nowrap}
+  .kpi .lab .vl b{color:var(--ink)}.kpi .lab .vl .tg{color:#7fce8e}
+  .bar2{height:7px;background:var(--panel2);border-radius:5px;overflow:hidden}
+  .bar2 i{display:block;height:100%;background:linear-gradient(90deg,#1f7a5e,#7fce8e);border-radius:5px}
+  .ms{font-size:11px;color:var(--muted);margin-top:11px;line-height:1.85}
+  .ms .c{color:#7fce8e;font-weight:700;margin-right:3px}.ms .x{color:#5e7488;margin-right:3px}
+  .moves{font-size:11.5px;margin-top:10px;color:var(--sun);line-height:1.4}
+  .secrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+</style>
+</head>
+<body>
+
+<div id="tabs">
+  <span class="brand">RTPV · AgroPV</span>
+  <button data-tab="map" class="on">Map</button>
+  <button data-tab="strategy">Strategy</button>
+  <button data-tab="shifts">Shifts &amp; markers → outcome</button>
+  <button data-tab="ecosystem">Ecosystem</button>
+</div>
+
+<!-- ============================ MAP VIEW ============================ -->
+<div class="view" id="view-map">
+  <div id="map"></div>
+  <div class="ui" id="mhead">
+    <h1>The WHAT — grid hosting-capacity visibility</h1>
+    <p>Where can the grid actually absorb rooftop? Red = opaque (no published data). That red is the bet.</p>
+  </div>
+  <div class="ui" id="err"></div>
+  <div class="ui" id="panel">
+    <div class="seg" id="mode">
+      <button data-mode="rtpv" class="on">RTPV</button>
+      <button data-mode="agropv">AgroPV</button>
+    </div>
+    <label class="fld">Metric</label>
+    <select id="metric"></select>
+    <div id="legend">
+      <div class="bar" id="bar"></div>
+      <div class="barlabels"><span id="lmin">–</span><span id="lmax">–</span></div>
+      <div class="nodata"><span class="swatch"></span> No seed data yet</div>
+    </div>
+  </div>
+  <div class="ui" id="info">
+    <h2 id="iname">—</h2>
+    <div class="collapse" id="icollapse"></div>
+    <div id="ichart"></div>
+    <div class="chartcap">
+      <span><span class="dot" style="background:#46b3a6"></span>solar output</span>
+      <span><span class="dot" style="background:#e8b94a"></span>firmed (storage-shifted)</span>
+    </div>
+    <table id="itable"></table>
+    <div class="who" id="iwho"></div>
+    <div class="verdict" id="iverdict"></div>
+  </div>
+  <div class="ui" id="note">
+    <b>The data story:</b> hosting capacity is checked by every DISCOM for every application, but
+    <b>published by ~one state (Telangana)</b> — DT/feeder capacity, quarterly, +50% DT cap. ~19 states only
+    auto-approve ≤10 kW; the rest are case-by-case &amp; opaque. <b>The data exists; the visibility doesn't.</b>
+    Rooftop-installed GW are real (Sept 2025); CUF/firming illustrative.
+  </div>
+</div>
+
+<!-- ============================ STRATEGY VIEW ============================ -->
+<div class="view" id="view-strategy" hidden>
+ <div class="scroll"><div class="wrap">
+  <h2 class="sec">What we're building on the ground</h2>
+  <p class="lead">Real things, in real places, each with a number we update monthly. No abstractions:
+  a plot, a dataset, a partnership. Each card shows what we measure, where it stands, and what it moves.</p>
+
+  <div class="reframe" style="border-left-color:#e08a8a"><b>Don't fund what's already crowded:</b>
+  rooftop potential mapping (a national explorer already covers 120 cities) · residential rooftop + subsidy
+  (PM Surya Ghar — 20.8 GW, +122% YoY) · MSME rooftop finance (well-served by large climate-finance players) ·
+  utility storage/firming (VGF live; FDRE ₹4.82–5.06/kWh). Discipline first: spend only on the white space.</div>
+
+  <!-- 1 AgroPV demo -->
+  <div class="init">
+    <div class="ihdr"><h4>1 · AgroPV demonstration plots <span style="color:#7fce8e;font-size:11px">— BET B (FUND)</span></h4><span class="stat st-active">Active</span></div>
+    <div class="meta"><b>Where:</b> 3 sites — marginal land &nbsp;·&nbsp; <b>Partners:</b> agrivoltaics research institutes + a developer + a farmer collective &nbsp;·&nbsp; <b>Instrument:</b> Grant (demonstration + MRV)</div>
+    <div class="kpi"><div class="lab"><span class="nm">Plots commissioned</span><span class="vl"><b>1</b> / <span class="tg">3</span></span></div><div class="bar2"><i style="width:33%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Farmer income measured</span><span class="vl">₹<b>4k</b> / <span class="tg">₹40k</span> /acre/yr</span></div><div class="bar2"><i style="width:10%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Crop yield vs control plot</span><span class="vl">measuring / <span class="tg">≥85%</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Firm energy metered</span><span class="vl"><b>live</b> MWh/yr</span></div><div class="bar2"><i style="width:20%"></i></div></div>
+    <div class="ms"><span class="c">✓</span>Site MoUs (3/3) &nbsp; <span class="c">✓</span>Plot 1 panels up &nbsp; <span class="x">○</span>First harvest measured &nbsp; <span class="x">○</span>Evidence pack published</div>
+    <div class="moves">↳ Moves: turns "nobody believes dual-use economics" into audited ₹ on a farmer's bank statement.</div>
+  </div>
+
+  <!-- 2 MSME rooftop -->
+  <div class="init">
+    <div class="ihdr"><h4>2 · MSME rooftop finance <span style="color:#e8a0a0;font-size:11px">— lower priority</span></h4><span class="stat st-block">Crowded</span></div>
+    <div class="meta"><b>Status:</b> already well-served by large climate-finance players (blended finance, first-loss, credit lines) &nbsp;·&nbsp; <b>Our role:</b> monitor; engage only on a specific unserved sub-gap</div>
+    <div class="ms" style="margin-top:0"><b style="color:#e8a0a0">Why lower priority:</b> MSME rooftop financing is filling fast with larger, better-suited capital — blended finance, first-loss guarantees, dedicated credit lines, and bank–NBFC tie-ups. Adding money here would not be additional.</div>
+    <div class="moves" style="color:#9fb3c4">↳ Action: track; re-enter only if a specific sub-gap (e.g. micro-MSME &lt;10 kW, informal credit) is left unserved.</div>
+  </div>
+
+  <!-- 3 DISCOM hosting data -->
+  <div class="init">
+    <div class="ihdr"><h4>3 · Feeder hosting-capacity layer <span style="color:#7fce8e;font-size:11px">— BET A (FUND)</span></h4><span class="stat st-active">Priority</span></div>
+    <div class="meta"><b>Where:</b> extend the existing national rooftop explorer + 1–2 pilot DISCOMs &nbsp;·&nbsp; <b>Instrument:</b> Grant + convening</div>
+    <div class="meta" style="color:#7fce8e">The existing national explorer maps rooftop <i>potential</i> for 120 cities — it does NOT map feeder/DT hosting capacity. That missing layer is the bet.</div>
+    <div class="kpi"><div class="lab"><span class="nm">Feeders mapped</span><span class="vl"><b>0</b> / <span class="tg">500</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Hosting headroom on this map</span><span class="vl"><b>no</b> → <span class="tg">live</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Rooftop approval time</span><span class="vl"><b>90d</b> → <span class="tg">30d</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="ms"><span class="x">○</span>Data-share MoU <i>(the blocker)</i> &nbsp; <span class="x">○</span>Feeder data ingested &nbsp; <span class="x">○</span>Headroom layer live</div>
+    <div class="moves">↳ Moves: gives the discom a concrete reason to say "yes" to rooftop — the #1 bottleneck.</div>
+  </div>
+
+  <!-- 4 First-loss pool -->
+  <div class="init">
+    <div class="ihdr"><h4>4 · Convening — the energy table <span style="color:#7fce8e;font-size:11px">— FUND</span></h4><span class="stat st-active">Priority</span></div>
+    <div class="meta"><b>Role:</b> a neutral energy convener — the one canvas job with no owner &nbsp;·&nbsp; <b>Brings together:</b> research partners + DISCOMs + developers + funders around the firming-cost trade &nbsp;·&nbsp; <b>Instrument:</b> Convening</div>
+    <div class="kpi"><div class="lab"><span class="nm">Convening table established</span><span class="vl"><b>0</b> / <span class="tg">1</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Actors at the table</span><span class="vl"><b>0</b> / <span class="tg">research + 2 DISCOMs + 2 funders</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Joint hosting-data MoU signed</span><span class="vl"><b>no</b> → <span class="tg">yes</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+    <div class="ms"><span class="x">○</span>First convening held &nbsp; <span class="x">○</span>Data-share agreed &nbsp; <span class="x">○</span>Firming-cost allocation drafted</div>
+    <div class="moves">↳ Moves: the neutral table where the firming-cost trade gets struck — unblocks Bets A &amp; B.</div>
+  </div>
+
+  <p class="muted">Tracker values are illustrative placeholders for the format — to be updated monthly
+  against real field data. The point is that every line is a number that moves, not a position.</p>
+ </div></div>
+</div>
+
+<!-- ============================ SHIFTS & MARKERS VIEW ============================ -->
+<div class="view" id="view-shifts" hidden>
+ <div class="scroll"><div class="wrap">
+  <h2 class="sec">Are we moving? — markers we track</h2>
+  <p class="lead">Movement, not intent. One north-star outcome, then three horizons — each a shift with
+  markers that are numbers carrying a baseline and a target. If a bar isn't moving, the strategy isn't.</p>
+
+  <div class="outcome" style="margin-top:0;margin-bottom:18px">
+    <h4>◎ North star — what we're trying to achieve</h4>
+    <p>Distributed solar (RTPV + AgroPV) delivering <b>firm, dispatchable energy</b> — measured in
+    CUF-adjusted TWh and ₹/kWh-to-firm — with the <b>DISCOM made whole</b> and the <b>farmer better off</b>.
+    Capacity stops being the scoreboard; firmed energy and a fair split of the firming cost become it.</p>
+    <div class="kpi" style="margin-top:11px"><div class="lab"><span class="nm">Firm distributed-RE energy tracked</span><span class="vl"><b>~0</b> → <span class="tg">calibrate</span> TWh/yr</span></div><div class="bar2"><i style="width:2%"></i></div></div>
+    <div class="kpi"><div class="lab"><span class="nm">Firm RE tariff (FDRE/RTC, sourced)</span><span class="vl"><b>₹4.82–5.06</b>/kWh → <span class="tg">falling</span></span></div><div class="bar2"><i style="width:40%"></i></div></div>
+  </div>
+
+  <h3 class="sub secrow"><span>Low-hanging · 0–2 yrs · prove the unit</span><span class="stat st-active">Active</span></h3>
+  <p class="muted" style="margin:-2px 0 8px"><span style="color:#e08a8a">FROM</span> counting nameplate GW <span style="color:#7fce8e">→ TO</span> firm-energy + cost-to-firm accounting &nbsp;·&nbsp; <span style="color:var(--accent)">PM Surya Ghar · PM-KUSUM</span></p>
+  <div class="kpi"><div class="lab"><span class="nm">Firmed units live (audited CUF + ₹/kWh)</span><span class="vl"><b>1</b> / <span class="tg">3</span></span></div><div class="bar2"><i style="width:33%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">Replicable templates published</span><span class="vl"><b>0</b> / <span class="tg">2</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">₹/kWh-to-firm proven on a real unit</span><span class="vl"><b>no</b> → <span class="tg">yes</span></span></div><div class="bar2"><i style="width:10%"></i></div></div>
+
+  <h3 class="sub secrow" style="margin-top:22px"><span>Middle · 2–5 yrs · share the firming cost</span><span class="stat st-plan">Planned</span></h3>
+  <p class="muted" style="margin:-2px 0 8px"><span style="color:#e08a8a">FROM</span> DISCOM eats firming <span style="color:#7fce8e">→ TO</span> cost shared via VGF / firm-PPA / green premium &nbsp;·&nbsp; <span style="color:var(--accent)">VGF-BESS · Green Open Access · RDSS</span></p>
+  <div class="kpi"><div class="lab"><span class="nm">Storage co-located (pilot)</span><span class="vl"><b>0</b> / <span class="tg">2</span> GWh</span></div><div class="bar2"><i style="width:0%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">First-loss crowding ratio</span><span class="vl"><b>0</b> → <span class="tg">1:4</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">DISCOMs with hosting data live</span><span class="vl"><b>0</b> / <span class="tg">3</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+
+  <h3 class="sub secrow" style="margin-top:22px"><span>Long · 5–15 yrs · firm RE becomes default</span><span class="stat st-plan">Planned</span></h3>
+  <p class="muted" style="margin:-2px 0 8px"><span style="color:#e08a8a">FROM</span> GW-target planning <span style="color:#7fce8e">→ TO</span> firm-energy (TWh) + round-the-clock planning &nbsp;·&nbsp; <span style="color:var(--accent)">500 GW non-fossil 2030 · Net-Zero 2070</span></p>
+  <div class="kpi"><div class="lab"><span class="nm">Cost-to-firm reduction</span><span class="vl"><b>0%</b> → <span class="tg">&gt;40%</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">AgroPV dual-use on marginal land</span><span class="vl"><b>pilots</b> → <span class="tg">GW-scale</span></span></div><div class="bar2"><i style="width:1%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">Firm distributed-RE share of new RE</span><span class="vl"><b>—</b> → <span class="tg">tracked</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+
+  <p class="muted" style="margin-top:18px">Measurement logic: <b>outputs</b> (units, GWh, ₹) are leading
+  indicators we control; the <b>outcome</b> (firm TWh, ₹/kWh-to-firm, discom &amp; farmer made whole) is the
+  lagging indicator we're actually after. Targets are illustrative until calibrated to field baselines.</p>
+ </div></div>
+</div>
+
+<!-- ============================ ECOSYSTEM VIEW ============================ -->
+<div class="view" id="view-ecosystem" hidden>
+ <div class="scroll"><div class="wrap">
+  <h2 class="sec">Actors on the canvas → where catalytic money goes</h2>
+  <p class="lead">Map every job in the value chain to the actor who owns it. Where a willing commercial
+  actor already does the job, the foundation stays out. Where the job is <b>unowned</b>, or an actor
+  exists but the <b>risk/return doesn't yet work</b>, that white space is exactly where catalytic funding
+  belongs — and the gap type tells you which instrument to use. Partner names are starting points to validate.</p>
+
+  <h3 class="sub">The actor canvas</h3>
+  <table class="t">
+    <tr><th>Job in the chain</th><th>Actors / partners</th><th>Responsibility</th><th>Covered?</th><th>Catalytic entry</th></tr>
+    <tr><td>Policy · targets · subsidy</td><td>MNRE, SECI, BEE, state agencies</td><td>Set targets, run schemes</td><td><span class="stat st-done">Govt</span></td><td>None — align, don't fund</td></tr>
+    <tr><td>Rooftop potential mapping</td><td>CSTEP (RTSE, 120 cities)</td><td>Map roof potential + savings</td><td><span class="stat st-done">Crowded</span></td><td>None — extend to hosting (Bet A)</td></tr>
+    <tr><td>RTPV — premium / C&amp;I</td><td>Tata Power Solar, Fourth Partner, Amplus, SolarSquare</td><td>Install &amp; operate rooftop</td><td><span class="stat st-done">Market</span></td><td>None — market works</td></tr>
+    <tr><td>RTPV — MSME / low-income</td><td>large climate-finance players + RESCOs</td><td>Serve thin-credit roofs</td><td><span class="stat st-done">Filling</span></td><td>Lower priority</td></tr>
+    <tr><td>AgroPV — dual-use</td><td>Khethworks, Oorja, NISE/ICAR, FPOs</td><td>Prove dual-use farming + energy</td><td><span class="stat st-block">No proof</span></td><td><b>Grant — demo + evidence</b></td></tr>
+    <tr><td>Evidence / MRV / modelling</td><td>CSTEP, CEEW, Prayas, WRI, TERI</td><td>Measure CUF, yield, income; model the system</td><td><span class="stat st-plan">Partial</span></td><td><b>Grant — independent MRV</b></td></tr>
+    <tr><td>Grid hosting data</td><td>DISCOMs, SLDCs, CEA + CSTEP (modelling)</td><td>Publish / model feeder headroom</td><td><span class="stat st-block">Unowned</span></td><td><b>Data layer + convening</b></td></tr>
+    <tr><td>Storage / firming</td><td>IESA, developers, CEA, CSTEP (modelling)</td><td>Build &amp; dispatch BESS; size firming</td><td><span class="stat st-plan">Partial</span></td><td><b>First-loss / VGF design</b></td></tr>
+    <tr><td>Finance / debt</td><td>IREDA, PFC/REC, SIDBI, cKers, Ecofy, NABARD</td><td>Lend to projects</td><td><span class="stat st-plan">Risk-averse</span></td><td><b>First-loss / guarantee</b></td></tr>
+    <tr><td>Aggregation</td><td>FPOs, RWAs, cluster bodies</td><td>Bundle small demand</td><td><span class="stat st-block">Weak</span></td><td><b>Grant + convening</b></td></tr>
+    <tr><td>Offtake / DISCOM</td><td>DISCOMs</td><td>Buy / net-meter, bear firming</td><td><span class="stat st-block">Stressed</span></td><td><b>De-risk via data + first-loss</b></td></tr>
+    <tr><td>Community / just transition</td><td>SELCO, FPOs, CSOs</td><td>Protect farmers &amp; land</td><td><span class="stat st-plan">Partial</span></td><td><b>Grant + safeguards</b></td></tr>
+    <tr><td>Coordination</td><td>— (no neutral actor)</td><td>Convene the firming-cost trade</td><td><span class="stat st-block">Unowned</span></td><td><b>Convening (foundation IS this)</b></td></tr>
+  </table>
+
+  <h3 class="sub">How the canvas decides the funding instrument</h3>
+  <table class="t">
+    <tr><th>Coverage on the canvas</th><th>What it means</th><th>Catalytic instrument</th></tr>
+    <tr><td><span class="stat st-done">Market / Govt</span></td><td>A willing actor already does it</td><td>Nothing — stay out, just align</td></tr>
+    <tr><td><span class="stat st-block">Unowned / no proof</span></td><td>Public good or unproven economics</td><td>Grant — evidence, demo, data, convening</td></tr>
+    <tr><td><span class="stat st-plan">Partial / risk-averse</span></td><td>Actor exists but won't move on the risk</td><td>First-loss / guarantee / concessional debt</td></tr>
+    <tr><td><span class="stat st-block">Stressed bearer</span></td><td>One actor silently carries the cost</td><td>De-risk + redistribute (data + first-loss + VGF)</td></tr>
+  </table>
+  <p class="muted">This is the rule: <b>catalytic funding flows to the coloured gaps, never the green
+  ones</b> — and the gap's colour picks the instrument. Fund the white space, exit when the market arrives.</p>
+
+  <h3 class="sub">Baseline → goal (what we move)</h3>
+  <div class="kpi"><div class="lab"><span class="nm">Rooftop installed (national)</span><span class="vl"><b>20.8</b> → <span class="tg">30</span> GW resid (FY27)</span></div><div class="bar2"><i style="width:69%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">PM Surya Ghar households</span><span class="vl"><b>~3M</b> → <span class="tg">10M</span> (1 cr)</span></div><div class="bar2"><i style="width:30%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">AT&amp;C losses</span><span class="vl"><b>16.3%</b> → <span class="tg">12–15%</span> (RDSS)</span></div><div class="bar2"><i style="width:35%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">Firm RE tariff (FDRE/RTC)</span><span class="vl"><b>₹4.82–5.06</b>/kWh → <span class="tg">falling</span></span></div><div class="bar2"><i style="width:40%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">Agrivoltaics pilots</span><span class="vl"><b>&lt;25</b> → <span class="tg">bankable model</span></span></div><div class="bar2"><i style="width:5%"></i></div></div>
+  <div class="kpi"><div class="lab"><span class="nm">DISCOMs with hosting data live</span><span class="vl"><b>0</b> → <span class="tg">2</span></span></div><div class="bar2"><i style="width:0%"></i></div></div>
+  <p class="muted" style="margin-top:12px">Baselines sourced mid-2026 (pv-magazine, Mercom, IEEFA, PFC, SolarQuarter, IISD).
+  AT&amp;C trend contested (RDSS: falling; PFC: rising). Solar CUF ~19% is a domain estimate. ₹ asks indicative.</p>
+ </div></div>
+</div>
+
+<script>
+/* ===== SEED (ILLUSTRATIVE) — GW, kWh/m2/day, water 0..1, prime flag ===== */
+const SEED = {
+ "Gujarat":{pot:30,inst:3.5,agro:25,ghi:5.6,water:.60,prime:0},"Maharashtra":{pot:45,inst:2.5,agro:30,ghi:5.4,water:.55,prime:0},
+ "Rajasthan":{pot:35,inst:1.5,agro:50,ghi:5.9,water:.80,prime:0},"Tamil Nadu":{pot:28,inst:1.8,agro:18,ghi:5.5,water:.65,prime:0},
+ "Karnataka":{pot:25,inst:1.2,agro:22,ghi:5.5,water:.60,prime:0},"Uttar Pradesh":{pot:55,inst:1.0,agro:28,ghi:5.2,water:.70,prime:0},
+ "Madhya Pradesh":{pot:30,inst:0.8,agro:35,ghi:5.5,water:.50,prime:0},"Telangana":{pot:18,inst:0.7,agro:16,ghi:5.5,water:.65,prime:0},
+ "Andhra Pradesh":{pot:22,inst:0.9,agro:20,ghi:5.5,water:.60,prime:0},"West Bengal":{pot:25,inst:0.4,agro:12,ghi:4.9,water:.45,prime:0},
+ "Punjab":{pot:14,inst:0.6,agro:8,ghi:5.2,water:.85,prime:1},"Haryana":{pot:12,inst:0.7,agro:9,ghi:5.3,water:.80,prime:1},
+ "Bihar":{pot:20,inst:0.3,agro:10,ghi:5.0,water:.40,prime:0},"Kerala":{pot:10,inst:0.9,agro:4,ghi:5.1,water:.30,prime:0},
+ "Odisha":{pot:16,inst:0.3,agro:14,ghi:5.1,water:.40,prime:0},"Delhi":{pot:6,inst:0.4,agro:0.5,ghi:5.3,water:.70,prime:0},
+ "Jharkhand":{pot:10,inst:0.2,agro:9,ghi:5.1,water:.40,prime:0},"Chhattisgarh":{pot:12,inst:0.2,agro:13,ghi:5.3,water:.40,prime:0},
+ "Assam":{pot:9,inst:0.1,agro:5,ghi:4.6,water:.30,prime:0},"Uttarakhand":{pot:5,inst:0.2,agro:3,ghi:5.0,water:.35,prime:0},
+ "Himachal Pradesh":{pot:4,inst:0.15,agro:2,ghi:5.0,water:.30,prime:0},"Jammu & Kashmir":{pot:5,inst:0.1,agro:3,ghi:5.2,water:.30,prime:0},
+ "Goa":{pot:1.5,inst:0.1,agro:0.5,ghi:5.3,water:.35,prime:0}
+};
+// REAL cumulative rooftop installed (GW, ~Sept 2025; top states sourced, rest est.)
+const REAL_INST={"Gujarat":4.8,"Maharashtra":2.8,"Rajasthan":1.33,"Kerala":1.30,"Uttar Pradesh":1.29,
+ "Tamil Nadu":0.9,"Karnataka":0.8,"Telangana":0.5,"Andhra Pradesh":0.5,"Madhya Pradesh":0.5,
+ "Haryana":0.35,"Punjab":0.3,"Delhi":0.3,"West Bengal":0.2,"Bihar":0.15,"Odisha":0.12,"Jharkhand":0.1,
+ "Chhattisgarh":0.12,"Assam":0.1,"Uttarakhand":0.12,"Himachal Pradesh":0.08,"Jammu & Kashmir":0.05,"Goa":0.05};
+// HOSTING-DATA VISIBILITY: 2=publishes DT/feeder capacity, 1=auto-approve <=10kW only, 0=opaque case-by-case
+const VIS={"Telangana":2, "Gujarat":1,"Karnataka":1,"Assam":1,"Madhya Pradesh":1,"Maharashtra":1,"Tamil Nadu":1};
+const VISLABEL=["Opaque — case-by-case","Auto-approve ≤10 kW only","Published (DT/feeder)"];
+
+function derive(d,name){
+  const cuf=Math.max(0.14,Math.min(0.24,0.14+(d.ghi-4.5)*0.06));
+  const cufp=+(cuf*100).toFixed(1);
+  const r_at100=+(d.pot*8.76).toFixed(1), a_at100=+(d.agro*8.76).toFixed(1);
+  const r_firm=+(d.pot*cuf*8.76).toFixed(1), a_firm=+(d.agro*cuf*8.76).toFixed(1);
+  const r_stor=+(0.35*d.pot*cuf*24).toFixed(1), a_stor=+(0.35*d.agro*cuf*24).toFixed(1);
+  const firmcost=+(5.0*(0.21/cuf)).toFixed(1);
+  const inst_real=REAL_INST[name]!==undefined?REAL_INST[name]:d.inst;
+  const viscode=VIS[name]!==undefined?VIS[name]:0;
+  return {...d,cuf,cufp,r_at100,a_at100,r_firm,a_firm,r_stor,a_stor,firmcost,inst_real,viscode,vislabel:VISLABEL[viscode]};
+}
+const DATA={}; for(const k in SEED) DATA[k]=derive(SEED[k],k);
+
+const METRICS={
+  rtpv:[
+    {key:"viscode", label:"★ Hosting-data visibility (THE bet)",kind:"vis"},
+    {key:"inst_real",label:"Rooftop installed (real, GW)",kind:"firm"},
+    {key:"pot",     label:"Nameplate potential (GW) — misleading",kind:"name"},
+    {key:"cufp",    label:"CUF (%)",kind:"cuf"},
+    {key:"r_firm",  label:"Firm energy (TWh/yr)",kind:"firm"},
+    {key:"r_stor",  label:"Storage to firm (GWh)",kind:"stor"},
+    {key:"firmcost",label:"Firming cost (₹/kWh added)",kind:"cost"}
+  ],
+  agropv:[
+    {key:"agro",    label:"Nameplate potential (GW) — misleading",kind:"name"},
+    {key:"cufp",    label:"CUF (%)",kind:"cuf"},
+    {key:"a_firm",  label:"Firm energy (TWh/yr)",kind:"firm"},
+    {key:"a_stor",  label:"Storage to firm (GWh)",kind:"stor"},
+    {key:"firmcost",label:"Firming cost (₹/kWh added)",kind:"cost"}
+  ]
+};
+function rampFor(kind){
+  if(kind==="firm") return ["#0b2b2b","#16504a","#1f7a5e","#34a373","#7fce8e","#cdeec0"];
+  if(kind==="cuf")  return ["#2a1d10","#5a3a14","#8a5a18","#c98a22","#e8b94a","#f6e3a0"];
+  if(kind==="stor") return ["#1c1430","#34245a","#4d3486","#7a52c0","#a988e0","#d6c6f5"];
+  if(kind==="cost") return ["#241016","#4d1d24","#7a2630","#b23b3a","#e0683f","#f2b07a"];
+  return ["#262d35","#33414e","#47586a","#5e7488","#7d93a6","#a9bccb"]; // nameplate muted
+}
+let mode="rtpv", metricKey="r_firm", metricKind="firm";
+
+const map=new maplibregl.Map({container:"map",
+  style:"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  center:[81.5,22.8],zoom:3.7,attributionControl:true});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}),"top-right");
+
+const GEO_URLS=[
+  "https://raw.githubusercontent.com/udit-001/india-maps-data/main/geojson/india.geojson",
+  "https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson"
+];
+const norm=s=>(s||"").toLowerCase().replace(/[^a-z]/g,"");
+const ALIAS={"nctofdelhi":"delhi","jammukashmir":"jammu & kashmir","jammuandkashmir":"jammu & kashmir",
+  "orissa":"odisha","telengana":"telangana","uttaranchal":"uttarakhand"};
+function resolve(name){const n=norm(name);
+  if(ALIAS[n]){for(const k in DATA)if(norm(k)===norm(ALIAS[n]))return k;return null;}
+  for(const k in DATA)if(norm(k)===n)return k; return null;}
+
+const PROPS=["pot","agro","cufp","r_firm","a_firm","r_stor","a_stor","firmcost","inst_real","viscode"];
+async function loadGeo(){
+  for(const url of GEO_URLS){
+    try{
+      const r=await fetch(url); if(!r.ok) continue;
+      const gj=await r.json();
+      const np=["ST_NM","NAME_1","st_nm","STATE","name"].find(p=>gj.features[0].properties[p]!==undefined);
+      gj.features.forEach(f=>{const key=resolve(f.properties[np]); const d=key?DATA[key]:null;
+        f.properties._name=key||f.properties[np];
+        PROPS.forEach(m=>f.properties[m]=d?d[m]:-1);
+        f.properties._has=d?1:0;});
+      return gj;
+    }catch(e){}
+  }
+  throw new Error("Could not load India boundaries (offline?)");
+}
+function domain(){const v=[];for(const k in DATA)v.push(DATA[k][metricKey]);
+  let mn=Math.min(...v),mx=Math.max(...v); if(mn===mx)mx=mn+1; return [mn,mx];}
+function colorExpr(){
+  if(metricKind==="vis") return ["match",["get","viscode"],0,"#b23b3a",1,"#e0a23a",2,"#2f8a5c","#3a3a3a"];
+  const [mn,mx]=domain(),cols=rampFor(metricKind),stops=[],n=cols.length;
+  for(let i=0;i<n;i++){stops.push(mn+(i/(n-1))*(mx-mn),cols[i]);}
+  return ["case",["<",["get",metricKey],0],"#3a3a3a",["interpolate",["linear"],["get",metricKey],...stops]];}
+function setMetricOptions(){const sel=document.getElementById("metric");sel.innerHTML="";
+  METRICS[mode].forEach(m=>{const o=document.createElement("option");o.value=m.key;o.textContent=m.label;o.dataset.kind=m.kind;sel.appendChild(o);});
+  const def=METRICS[mode].find(m=>m.kind==="vis")||METRICS[mode].find(m=>m.kind==="firm");
+  metricKey=def.key;metricKind=def.kind;sel.value=metricKey;}
+function setLegend(){
+  if(metricKind==="vis"){
+    document.getElementById("bar").style.background="linear-gradient(90deg,#b23b3a 0 33%,#e0a23a 33% 66%,#2f8a5c 66%)";
+    document.getElementById("lmin").textContent="Opaque"; document.getElementById("lmax").textContent="Published";
+    return;}
+  const [mn,mx]=domain(),cols=rampFor(metricKind);
+  document.getElementById("bar").style.background=`linear-gradient(90deg,${cols.join(",")})`;
+  document.getElementById("lmin").textContent=mn;document.getElementById("lmax").textContent=mx;}
+function refresh(){if(!map.getLayer("states-fill"))return;
+  map.setPaintProperty("states-fill","fill-color",colorExpr());setLegend();}
+
+function profileSVG(cuf){
+  const W=256,H=104,pad=20,base=H-18,top=14;
+  const f=t=>Math.exp(-Math.pow((t-13)/3.0,2)), xs=t=>pad+(t/24)*(W-2*pad);
+  const amp=(base-top)*Math.min(1,cuf/0.21), ys=v=>base-v*amp;
+  let path="";for(let t=0;t<=24;t+=0.5)path+=(t===0?"M":"L")+xs(t).toFixed(1)+","+ys(f(t)).toFixed(1);
+  const area=path+`L${xs(24).toFixed(1)},${base}L${xs(0).toFixed(1)},${base}Z`;
+  const pl=0.40, firm=`M${xs(6).toFixed(1)},${ys(pl).toFixed(1)} L${xs(22).toFixed(1)},${ys(pl).toFixed(1)}`;
+  const ticks=[0,6,12,18,24].map(h=>`<text x="${xs(h).toFixed(1)}" y="${H-4}" fill="#8aa0b2" font-size="8" text-anchor="middle">${h}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
+    <line x1="${pad}" y1="${base}" x2="${W-pad}" y2="${base}" stroke="#2a3744"/>
+    <path d="${area}" fill="rgba(70,179,166,.16)"/>
+    <path d="${path}" fill="none" stroke="#46b3a6" stroke-width="2"/>
+    <path d="${firm}" fill="none" stroke="#e8b94a" stroke-width="2" stroke-dasharray="4 3"/>
+    <text x="${xs(13).toFixed(1)}" y="${ys(1.02).toFixed(1)}" fill="#46b3a6" font-size="8" text-anchor="middle">midday surplus → store</text>
+    <text x="${xs(20).toFixed(1)}" y="${ys(pl+0.18).toFixed(1)}" fill="#e8b94a" font-size="8" text-anchor="middle">↳ evening discharge</text>
+    ${ticks}</svg>`;
+}
+function showInfo(p){
+  const key=p._name,d=DATA[key];
+  document.getElementById("info").style.display="block";
+  document.getElementById("iname").textContent=key+(p._has?"":"  (no seed data)");
+  if(!p._has){["icollapse","ichart","itable","iwho"].forEach(i=>document.getElementById(i).innerHTML="");
+    document.getElementById("iverdict").textContent="No seed data for this state yet — add it to SEED to light it up.";return;}
+  const nameplate=mode==="rtpv"?d.pot:d.agro, at100=mode==="rtpv"?d.r_at100:d.a_at100,
+        firm=mode==="rtpv"?d.r_firm:d.a_firm, stor=mode==="rtpv"?d.r_stor:d.a_stor,
+        pct=Math.round(firm/at100*100);
+  document.getElementById("icollapse").innerHTML=
+    `<div><div class="big">${nameplate}</div><div class="lab">GW nameplate</div></div>
+     <div class="arrow">→</div>
+     <div><div class="big">${firm}</div><div class="lab">TWh/yr firm</div></div>
+     <div style="margin-left:auto;text-align:right"><div class="pct">${pct}%</div><div class="lab">of 100%-run</div></div>`;
+  document.getElementById("ichart").innerHTML=profileSVG(d.cuf);
+  const rows = mode==="rtpv" ? [
+    ["★ Hosting-data",d.vislabel],
+    ["Rooftop installed (real)",d.inst_real+" GW"],
+    ["CUF",d.cufp+" %"],["Firm energy",firm+" TWh/yr"],
+    ["Storage to firm",stor+" GWh"],["Firming cost",d.firmcost+" ₹/kWh"]
+  ] : [
+    ["CUF",d.cufp+" %"],["At 100% run",at100+" TWh/yr"],["Firm energy",firm+" TWh/yr"],
+    ["Storage to firm",stor+" GWh"],["Firming cost",d.firmcost+" ₹/kWh added"],
+    ["Prime farmland",d.prime?"yes (down-weight)":"no"]
+  ];
+  document.getElementById("itable").innerHTML=rows.map(r=>`<tr><td class="k">${r[0]}</td><td class="v">${r[1]}</td></tr>`).join("");
+  document.getElementById("iwho").innerHTML=
+    `<div class="wh">Who pays the +${d.firmcost} ₹/kWh to firm?</div>
+     <ul><li><b>DISCOM</b> (status quo) → cross-subsidy stress</li>
+     <li>Govt VGF · Developer firm-PPA · C&I green premium</li>
+     <li><b>Foundation</b>: first-loss so the discom isn't the default bearer</li></ul>`;
+  let v;
+  if(mode==="rtpv"){
+    v=d.viscode===2?"Hosting data PUBLISHED — Telangana model: quarterly DT/feeder capacity + 50% DT cap. THIS is the template to replicate nationally."
+      :d.viscode===1?"Only auto-approval ≤10 kW — small systems skip the check, but feeder hosting capacity is still NOT published. Partial visibility; the data stays locked in the discom."
+      :"OPAQUE — hosting assessed case-by-case behind closed doors; no published feeder data. THIS is the white space to fund: make the invisible visible.";
+  } else {
+    v=d.prime?"Prime farmland — AgroPV down-weighted; dual-use is weak where land already produces well."
+      :"Non-prime, "+d.cufp+"% CUF — AgroPV's value is land + water + farmer income, not a better CUF. Firming need &amp; cost are identical to plain solar.";
+  }
+  document.getElementById("iverdict").innerHTML=v;
+}
+
+map.on("load",async()=>{
+  let gj;try{gj=await loadGeo();}catch(e){const el=document.getElementById("err");el.style.display="block";el.textContent=e.message+" — basemap only.";return;}
+  map.addSource("states",{type:"geojson",data:gj});
+  setMetricOptions();
+  map.addLayer({id:"states-fill",type:"fill",source:"states",paint:{"fill-color":colorExpr(),"fill-opacity":0.82}});
+  map.addLayer({id:"states-line",type:"line",source:"states",paint:{"line-color":"#11181f","line-width":0.4,"line-opacity":0.6}});
+  map.addLayer({id:"states-hi",type:"fill",source:"states",paint:{"fill-color":"#46b3a6","fill-opacity":0.18},filter:["==","_name",""]});
+  setLegend();
+  const pop=new maplibregl.Popup({closeButton:false,closeOnClick:false});
+  map.on("mousemove","states-fill",e=>{map.getCanvas().style.cursor="pointer";const p=e.features[0].properties;
+    map.setFilter("states-hi",["==","_name",p._name]);
+    const m=METRICS[mode].find(x=>x.key===metricKey);
+    pop.setLngLat(e.lngLat).setHTML(`<div class="tt"><b>${p._name}</b><span>${m.label}: ${p._has?p[metricKey]:"no data"}</span></div>`).addTo(map);});
+  map.on("mouseleave","states-fill",()=>{map.getCanvas().style.cursor="";pop.remove();map.setFilter("states-hi",["==","_name",""]);});
+  map.on("click","states-fill",e=>showInfo(e.features[0].properties));
+});
+
+document.getElementById("mode").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  document.querySelectorAll("#mode button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");mode=b.dataset.mode;setMetricOptions();refresh();
+  document.getElementById("info").style.display="none";});
+document.getElementById("metric").addEventListener("change",e=>{
+  metricKey=e.target.value;metricKind=e.target.selectedOptions[0].dataset.kind;refresh();});
+
+/* ---- tab switching ---- */
+document.getElementById("tabs").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-tab]");if(!b)return;
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");
+  const t=b.dataset.tab;
+  ["map","strategy","shifts","ecosystem"].forEach(v=>document.getElementById("view-"+v).hidden=(v!==t));
+  if(t==="map") setTimeout(()=>map.resize(),0);
+});
+</script>
+</body>
+</html>
